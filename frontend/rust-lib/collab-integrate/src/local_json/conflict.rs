@@ -59,4 +59,36 @@ mod tests {
     assert_eq!(content_hash(b"hello"), content_hash(b"hello"));
     assert_ne!(content_hash(b"hello"), content_hash(b"hello!"));
   }
+
+  #[test]
+  fn external_change_is_missing_without_current_mtime() {
+    assert_eq!(
+      has_external_change(None, Some("hash"), Some(10), Some("hash")),
+      ExternalChangeState::Missing
+    );
+  }
+
+  #[test]
+  fn external_change_detects_newer_mtime() {
+    assert_eq!(
+      has_external_change(Some(20), Some("hash"), Some(10), Some("hash")),
+      ExternalChangeState::Changed
+    );
+  }
+
+  #[test]
+  fn external_change_detects_hash_difference() {
+    assert_eq!(
+      has_external_change(Some(10), Some("new"), Some(10), Some("old")),
+      ExternalChangeState::Changed
+    );
+  }
+
+  #[test]
+  fn external_change_is_unchanged_when_metadata_matches() {
+    assert_eq!(
+      has_external_change(Some(10), Some("same"), Some(10), Some("same")),
+      ExternalChangeState::Unchanged
+    );
+  }
 }

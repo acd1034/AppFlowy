@@ -50,6 +50,7 @@ walkdir = "2.5.0"
 futures = "0.3.31"
 flowy-ai-pub = { workspace = true }
 serial_test = "2.0.0"
+collab-integrate = { workspace = true }
 
 [features]
 dart = ["flowy-core/dart"]

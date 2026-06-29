@@ -2002,6 +2002,7 @@ dependencies = [
  "collab-document",
  "collab-entity",
  "collab-folder",
+ "collab-integrate",
  "flowy-ai",
  "flowy-ai-pub",
  "flowy-core",
