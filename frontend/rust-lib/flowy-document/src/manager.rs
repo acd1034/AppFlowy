@@ -580,6 +580,9 @@ impl DocumentManager {
       return;
     }
 
+    // AppFlowy-originated edits are exported with a small debounce. External
+    // JSON edits are not watched in the MVP; opening/reopening the document is
+    // the import boundary.
     let user_service = self.user_service.clone();
     let handle = tokio::spawn(async move {
       tokio::time::sleep(LOCAL_JSON_EXPORT_DEBOUNCE).await;
@@ -610,6 +613,9 @@ impl DocumentManager {
   }
 
   async fn import_local_json_to_disk(&self, doc_id: &Uuid) {
+    // MVP external edit detection happens here before the runtime document is
+    // opened. Live filesystem detection and currently-open document updates are
+    // intentionally left to the follow-up feature sequence.
     let data = match import_document_with_user_service(self.user_service.clone(), *doc_id).await {
       Ok(Some(data)) => data,
       Ok(None) => return,

@@ -1,3 +1,9 @@
+//! Local JSON sidecar integration for AppFlowy documents.
+//!
+//! MVP boundary: external JSON edits are imported only while opening or
+//! reopening a document. Filesystem watching, polling, currently-open document
+//! live updates, and UI notifications are follow-up features.
+
 use std::env;
 use std::path::PathBuf;
 use std::sync::Arc;
