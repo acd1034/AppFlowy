@@ -15,6 +15,22 @@ APPFLOWY_LOCAL_JSON=1
 When the variable is absent or false, local JSON import and export are no-ops.
 No cloud sync or remote API is required.
 
+## Cloud Sync Boundary
+
+The local JSON feature is independent from AppFlowy Cloud sync. It does not add
+AppFlowy Cloud dependencies, does not call remote sync APIs, and does not create
+collab cloud sync plugins for JSON import/export.
+
+Existing AppFlowy Cloud code remains in place. The JSON sidecar path is gated by
+`APPFLOWY_LOCAL_JSON` and uses only local values supplied by the runtime user
+services: profile uid, workspace id, and `user_data_dir`. This keeps the feature
+usable with the Local provider while avoiding broad upstream merge conflicts
+from deleting cloud-related code.
+
+The Step 7 validation flow should use a Local/anonymous profile. Cloud login,
+remote collaboration, AppFlowy Cloud workspace sync, and self-hosted sync are
+outside the MVP scope.
+
 ## Storage Layout
 
 JSON files live next to the existing user data area, not inside the RocksDB

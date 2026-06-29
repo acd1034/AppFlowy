@@ -1,3 +1,9 @@
+//! Local JSON manifest export for Folder/View metadata.
+//!
+//! This is intentionally local-only: it snapshots the in-memory Folder tree and
+//! writes through `LocalJsonStore` under `user_data_dir`. It does not call cloud
+//! services or remote sync APIs.
+
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::PathBuf;

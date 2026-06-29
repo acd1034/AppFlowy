@@ -3,6 +3,11 @@
 //! MVP boundary: external JSON edits are imported only while opening or
 //! reopening a document. Filesystem watching, polling, currently-open document
 //! live updates, and UI notifications are follow-up features.
+//!
+//! Local-only boundary: this module does not call `DocumentCloudService`,
+//! collab sync providers, or remote APIs. The user service is used only to
+//! supply uid, workspace id, and `user_data_dir`, so the feature works with the
+//! Local provider and remains opt-in behind `APPFLOWY_LOCAL_JSON`.
 
 use std::env;
 use std::path::PathBuf;
