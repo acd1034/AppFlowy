@@ -49,6 +49,19 @@ JSON files live next to the existing user data area, not inside the RocksDB
 Document JSON files are pretty-printed UTF-8. Writes use the atomic writer in
 `collab-integrate::local_json::LocalJsonStore`.
 
+## Hook Points
+
+Document JSON import runs before the Collab-backed document instance is opened.
+Valid JSON is converted to `DocumentData`, encoded as normal Collab document
+state, and flushed through the existing local persistence path. The editor still
+uses the same runtime Collab/CRDT model after open.
+
+Document JSON export runs after AppFlowy has successfully created, opened, or
+edited a Document page. Edit-driven exports are debounced. Folder/View metadata
+exports regenerate `manifest.json` from the Folder tree after workspace
+initialization and view create, rename, move, trash, restore, or permanent
+delete operations.
+
 ## MVP Sync Boundary
 
 The MVP detects external edits only at document startup boundaries:
@@ -65,6 +78,26 @@ The MVP detects external edits only at document startup boundaries:
 The MVP intentionally does not run a filesystem watcher, polling task, live
 currently-open document update, UI notification, or conflict dialog. Those are
 follow-up features.
+
+## Conflict Behavior
+
+The MVP keeps the existing AppFlowy local persistence as the safety net. JSON is
+treated as an external sidecar interface:
+
+- AppFlowy-originated edits are exported to JSON after internal persistence has
+  succeeded.
+- A valid document JSON file found at open/reopen is imported into
+  `DocumentData` and then flushed to the existing local Collab persistence.
+- A missing document JSON file does not block open; AppFlowy opens the internal
+  document and exports a fresh sidecar.
+- A malformed document or manifest JSON file is copied to `backups/`, ignored
+  for that import/export pass, and the existing AppFlowy document state is kept.
+
+The schema contains sync metadata and content-hash fields for detecting external
+changes, but the MVP does not provide a live conflict dialog or automatic
+currently-open document merge. If AppFlowy and an external editor both change a
+document while it is open, close and reopen the document to exercise the MVP
+import boundary. Live conflict handling is a follow-up feature.
 
 ## Schema Contract
 
@@ -138,12 +171,82 @@ truth.
 Full title import from `manifest.json` or document JSON is a follow-up feature.
 Folder/View metadata remains the title source of truth.
 
+## Recovery
+
+When JSON parsing or schema validation fails, AppFlowy does not overwrite the
+last valid internal document. The bad file is copied to the workspace backup
+directory using a timestamped name:
+
+```text
+{user_data_dir}/codex_json/workspaces/{workspace_id}/backups/
+```
+
+Inspect the backup to recover manual edits, fix the active JSON file, and reopen
+the document. If the active JSON is removed entirely, AppFlowy falls back to its
+existing local Collab persistence and can export a new sidecar on open.
+
 ## Why Collab Remains
 
 AppFlowy's editor runtime expects Collab/CRDT document data. The local JSON
 interface is a persistence boundary for external tools, not a replacement for
 the in-memory editor model. Import converts JSON into `DocumentData`, then the
 normal local persistence path stores the resulting Collab document.
+
+## Codex Editing Example
+
+1. Start AppFlowy with `APPFLOWY_LOCAL_JSON=1`.
+2. Create or open a Document page once so AppFlowy exports
+   `manifest.json` and `documents/{view_id}.json`.
+3. Use `manifest.json` to find the target Document entry:
+
+```json
+{
+  "view_id": "9f9fb1c4-43b4-4b00-8384-9d1e78de172a",
+  "title": "Example page",
+  "layout": "document",
+  "path": "documents/9f9fb1c4-43b4-4b00-8384-9d1e78de172a.json"
+}
+```
+
+4. Edit the referenced document JSON. For a plain paragraph edit, changing
+   `blocks[*].text` is enough:
+
+```json
+{
+  "schema": "appflowy.codex_json.document",
+  "schema_version": 1,
+  "view_id": "9f9fb1c4-43b4-4b00-8384-9d1e78de172a",
+  "workspace_id": "workspace-id",
+  "title": "Example page",
+  "layout": "document",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "text": "hello from codex"
+    }
+  ],
+  "unsupported_blocks": []
+}
+```
+
+5. Reopen the document in AppFlowy. The MVP imports valid JSON at open/reopen,
+   then continues using the normal Collab-backed editor runtime.
+
+Avoid editing JSON for a document that is currently open if you need immediate
+UI feedback. Live currently-open document updates are intentionally left to the
+follow-up feature set.
+
+## Limitations
+
+- Document pages are the only supported layout.
+- Database, Calendar, attachments, comments, and complex page-level features are
+  not JSON-primary in the MVP.
+- Title export is implemented, but title import from `manifest.json` or
+  document JSON is not.
+- JSON files alone do not create new AppFlowy views.
+- Live filesystem watching and live UI notification are not implemented.
+- Unsupported blocks are preserved as unsupported JSON entries where possible,
+  but full semantic editing is limited to the supported block list above.
 
 ## Follow-up Features
 

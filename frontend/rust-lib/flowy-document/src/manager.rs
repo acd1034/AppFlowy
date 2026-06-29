@@ -262,6 +262,9 @@ impl DocumentManager {
     enable_sync: bool,
   ) -> FlowyResult<Arc<RwLock<Document>>> {
     let uid = self.user_service.user_id()?;
+    // Local JSON is an external editing interface, not a runtime model
+    // replacement. Import before opening Collab so the editor still runs on
+    // the existing CRDT-backed Document runtime.
     self.import_local_json_to_disk(doc_id).await;
     let mut doc_state = self.persistence()?.into_data_source();
     // If the document does not exist in local disk, try get the doc state from the cloud. This happens
@@ -565,6 +568,9 @@ impl DocumentManager {
         return;
       },
     };
+    // Open/reopen creates a sidecar only when it is missing. AppFlowy edits use
+    // the debounced export path, and external JSON edits are imported at the
+    // next open boundary.
     if let Err(err) =
       export_document_with_user_service_if_missing(self.user_service.clone(), *doc_id, data).await
     {
