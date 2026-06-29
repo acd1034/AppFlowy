@@ -58,6 +58,14 @@ impl DocumentTest {
       builder,
     }
   }
+
+  pub fn user_data_dir(&self) -> PathBuf {
+    self.user_service.user_data_dir().unwrap()
+  }
+
+  pub fn workspace_id(&self) -> Uuid {
+    self.user_service.workspace_id().unwrap()
+  }
 }
 
 impl Deref for DocumentTest {
@@ -125,6 +133,12 @@ pub fn setup_log() {
       .finish();
     subscriber.try_init().unwrap();
   });
+}
+
+pub fn enable_local_json_for_test() {
+  unsafe {
+    std::env::set_var("APPFLOWY_LOCAL_JSON", "1");
+  }
 }
 
 pub async fn create_and_open_empty_document() -> (DocumentTest, Arc<RwLock<Document>>, String) {

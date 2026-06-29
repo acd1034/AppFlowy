@@ -7,8 +7,8 @@ use chrono::{SecondsFormat, Utc};
 use collab_document::blocks::DocumentData;
 use collab_integrate::local_json::{
   JsonStorageConfig, LocalJsonDocument, LocalJsonError, LocalJsonManifest, LocalJsonStore,
-  SafeJsonRead, export_document_data_to_json, manifest_document_from_view,
-  upsert_manifest_document,
+  SafeJsonRead, export_document_data_to_json, import_json_to_document_data,
+  manifest_document_from_view, upsert_manifest_document,
 };
 use flowy_error::{FlowyError, FlowyResult, internal_error};
 use tracing::warn;
@@ -35,6 +35,42 @@ pub(crate) async fn export_document_with_user_service(
   view_id: Uuid,
   data: DocumentData,
 ) -> FlowyResult<()> {
+  export_document_with_mode(user_service, view_id, data, true).await
+}
+
+pub(crate) async fn export_document_with_user_service_if_missing(
+  user_service: Arc<dyn DocumentUserService>,
+  view_id: Uuid,
+  data: DocumentData,
+) -> FlowyResult<()> {
+  export_document_with_mode(user_service, view_id, data, false).await
+}
+
+pub(crate) async fn import_document_with_user_service(
+  user_service: Arc<dyn DocumentUserService>,
+  view_id: Uuid,
+) -> FlowyResult<Option<DocumentData>> {
+  if !is_local_json_enabled() {
+    return Ok(None);
+  }
+
+  let uid = user_service.user_id()?;
+  let workspace_id = user_service.workspace_id()?;
+  let user_data_dir = user_service.user_data_dir()?;
+
+  tokio::task::spawn_blocking(move || {
+    import_document_from_local_json(user_data_dir, uid, workspace_id, view_id)
+  })
+  .await
+  .map_err(internal_error)?
+}
+
+async fn export_document_with_mode(
+  user_service: Arc<dyn DocumentUserService>,
+  view_id: Uuid,
+  data: DocumentData,
+  overwrite_document: bool,
+) -> FlowyResult<()> {
   if !is_local_json_enabled() {
     return Ok(());
   }
@@ -44,7 +80,14 @@ pub(crate) async fn export_document_with_user_service(
   let user_data_dir = user_service.user_data_dir()?;
 
   tokio::task::spawn_blocking(move || {
-    export_document_to_local_json(user_data_dir, uid, workspace_id, view_id, data)
+    export_document_to_local_json(
+      user_data_dir,
+      uid,
+      workspace_id,
+      view_id,
+      data,
+      overwrite_document,
+    )
   })
   .await
   .map_err(internal_error)?
@@ -56,6 +99,7 @@ fn export_document_to_local_json(
   workspace_id: Uuid,
   view_id: Uuid,
   data: DocumentData,
+  overwrite_document: bool,
 ) -> FlowyResult<()> {
   let workspace_id = workspace_id.to_string();
   let view_id = view_id.to_string();
@@ -71,15 +115,17 @@ fn export_document_to_local_json(
   let existing_manifest = read_existing_manifest(&store, uid, &workspace_id, &timestamp)?;
   let title = local_json_title(&existing_manifest, existing_document.as_ref(), &view_id);
 
-  let mut document = export_document_data_to_json(&view_id, &workspace_id, &title, &data)
-    .map_err(local_json_error)?;
-  document.updated_at = Some(timestamp.clone());
-  document.last_writer = "appflowy".to_string();
-  if let Some(existing_document) = existing_document {
-    document.sync = existing_document.sync;
-    document.extra = existing_document.extra;
+  if overwrite_document || existing_document.is_none() {
+    let mut document = export_document_data_to_json(&view_id, &workspace_id, &title, &data)
+      .map_err(local_json_error)?;
+    document.updated_at = Some(timestamp.clone());
+    document.last_writer = "appflowy".to_string();
+    if let Some(existing_document) = existing_document {
+      document.sync = existing_document.sync;
+      document.extra = existing_document.extra;
+    }
+    store.write_document(&document).map_err(local_json_error)?;
   }
-  store.write_document(&document).map_err(local_json_error)?;
 
   let mut manifest = existing_manifest;
   manifest.exported_at = timestamp.clone();
@@ -90,6 +136,63 @@ fn export_document_to_local_json(
   store.write_manifest(&manifest).map_err(local_json_error)?;
 
   Ok(())
+}
+
+fn import_document_from_local_json(
+  user_data_dir: PathBuf,
+  uid: i64,
+  workspace_id: Uuid,
+  view_id: Uuid,
+) -> FlowyResult<Option<DocumentData>> {
+  let workspace_id = workspace_id.to_string();
+  let view_id = view_id.to_string();
+  let timestamp = now_rfc3339();
+  let store = LocalJsonStore::new(JsonStorageConfig::from_user_data_dir(
+    user_data_dir,
+    uid,
+    &workspace_id,
+  ));
+
+  match store
+    .read_document_safely(&view_id, &timestamp)
+    .map_err(local_json_error)?
+  {
+    SafeJsonRead::Valid(document) => {
+      if document.view_id != view_id || document.workspace_id != workspace_id {
+        warn!(
+          "skip local JSON import because document identity does not match path: path_view_id={}, json_view_id={}, path_workspace_id={}, json_workspace_id={}",
+          view_id, document.view_id, workspace_id, document.workspace_id
+        );
+        return Ok(None);
+      }
+
+      match import_json_to_document_data(&document) {
+        Ok(data) => Ok(Some(data)),
+        Err(error) => {
+          let backup_path = store.backup_document(&view_id, &timestamp).ok().flatten();
+          warn!(
+            "failed to import local JSON document {}, backup_path={:?}, error={}",
+            view_id, backup_path, error
+          );
+          Ok(None)
+        },
+      }
+    },
+    SafeJsonRead::Missing => Ok(None),
+    SafeJsonRead::Malformed {
+      path,
+      backup_path,
+      error,
+    } => {
+      warn!(
+        "malformed local JSON document was backed up before AppFlowy import: path={}, backup_path={:?}, error={}",
+        path.display(),
+        backup_path,
+        error
+      );
+      Ok(None)
+    },
+  }
 }
 
 fn read_existing_document(

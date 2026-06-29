@@ -19,7 +19,9 @@ use crate::document::{
   subscribe_document_changed, subscribe_document_snapshot_state, subscribe_document_sync_state,
 };
 use crate::local_json::{
-  LOCAL_JSON_EXPORT_DEBOUNCE, export_document_with_user_service, is_local_json_enabled,
+  LOCAL_JSON_EXPORT_DEBOUNCE, export_document_with_user_service,
+  export_document_with_user_service_if_missing, import_document_with_user_service,
+  is_local_json_enabled,
 };
 use collab_integrate::collab_builder::{
   AppFlowyCollabBuilder, CollabBuilderConfig, CollabPersistenceImpl,
@@ -260,6 +262,7 @@ impl DocumentManager {
     enable_sync: bool,
   ) -> FlowyResult<Arc<RwLock<Document>>> {
     let uid = self.user_service.user_id()?;
+    self.import_local_json_to_disk(doc_id).await;
     let mut doc_state = self.persistence()?.into_data_source();
     // If the document does not exist in local disk, try get the doc state from the cloud. This happens
     // When user_device_a create a document and user_device_b open the document.
@@ -562,7 +565,14 @@ impl DocumentManager {
         return;
       },
     };
-    self.export_document_to_local_json(doc_id, data).await;
+    if let Err(err) =
+      export_document_with_user_service_if_missing(self.user_service.clone(), *doc_id, data).await
+    {
+      warn!(
+        "failed to export document {} to local JSON: {}",
+        doc_id, err
+      );
+    }
   }
 
   pub(crate) fn schedule_document_local_json_export(&self, doc_id: Uuid, data: DocumentData) {
@@ -597,6 +607,39 @@ impl DocumentManager {
       task.abort();
     }
     self.local_json_export_tasks.clear();
+  }
+
+  async fn import_local_json_to_disk(&self, doc_id: &Uuid) {
+    let data = match import_document_with_user_service(self.user_service.clone(), *doc_id).await {
+      Ok(Some(data)) => data,
+      Ok(None) => return,
+      Err(err) => {
+        warn!("failed to read local JSON for document {}: {}", doc_id, err);
+        return;
+      },
+    };
+
+    let encoded_collab = match doc_state_from_document_data(doc_id, data).await {
+      Ok(encoded_collab) => encoded_collab,
+      Err(err) => {
+        warn!(
+          "failed to encode imported local JSON document {}: {}",
+          doc_id, err
+        );
+        return;
+      },
+    };
+
+    if let Err(err) = self.persistence().and_then(|persistence| {
+      persistence
+        .save_collab_to_disk(doc_id.to_string().as_str(), encoded_collab)
+        .map_err(internal_error)
+    }) {
+      warn!(
+        "failed to flush imported local JSON document {} to disk: {}",
+        doc_id, err
+      );
+    }
   }
 }
 
