@@ -15,7 +15,7 @@ collab-document = { workspace = true }
 collab-folder = { workspace = true }
 collab-user = { workspace = true }
 collab-database = { workspace = true }
-serde.workspace = true
+serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
