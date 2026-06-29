@@ -126,7 +126,12 @@ pub(crate) async fn apply_action_handler(
   let document = manager.editable_document(&doc_id).await?;
   let actions = params.actions;
   sync_trace!("{} applying action: {:?}", doc_id, actions);
-  document.write().await.apply_action(actions)?;
+  let document_data = {
+    let mut document = document.write().await;
+    document.apply_action(actions)?;
+    document.get_document_data()?
+  };
+  manager.schedule_document_local_json_export(doc_id, document_data);
   Ok(())
 }
 
@@ -139,9 +144,13 @@ pub(crate) async fn create_text_handler(
   let params: TextDeltaParams = data.into_inner().try_into()?;
   let doc_id = params.document_id;
   let document = manager.editable_document(&doc_id).await?;
-  let mut document = document.write().await;
   sync_trace!("{} creating text: {:?}", doc_id, params.delta);
-  document.apply_text_delta(&params.text_id, params.delta);
+  let document_data = {
+    let mut document = document.write().await;
+    document.apply_text_delta(&params.text_id, params.delta);
+    document.get_document_data()?
+  };
+  manager.schedule_document_local_json_export(doc_id, document_data);
   Ok(())
 }
 
@@ -156,9 +165,13 @@ pub(crate) async fn apply_text_delta_handler(
   let document = manager.editable_document(&doc_id).await?;
   let text_id = params.text_id;
   let delta = params.delta;
-  let mut document = document.write().await;
   sync_trace!("{} applying delta: {:?}", doc_id, delta);
-  document.apply_text_delta(&text_id, delta);
+  let document_data = {
+    let mut document = document.write().await;
+    document.apply_text_delta(&text_id, delta);
+    document.get_document_data()?
+  };
+  manager.schedule_document_local_json_export(doc_id, document_data);
   Ok(())
 }
 

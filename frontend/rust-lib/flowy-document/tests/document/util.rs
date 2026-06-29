@@ -1,4 +1,5 @@
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use collab::entity::EncodedCollab;
@@ -70,6 +71,7 @@ impl Deref for DocumentTest {
 pub struct FakeUser {
   workspace_id: Uuid,
   collab_db: Arc<CollabKVDB>,
+  user_data_dir: PathBuf,
 }
 
 impl FakeUser {
@@ -78,12 +80,13 @@ impl FakeUser {
 
     let tempdir = TempDir::new().unwrap();
     let path = tempdir.into_path();
-    let collab_db = Arc::new(CollabKVDB::open(path).unwrap());
+    let collab_db = Arc::new(CollabKVDB::open(&path).unwrap());
     let workspace_id = uuid::Uuid::new_v4();
 
     Self {
       collab_db,
       workspace_id,
+      user_data_dir: path,
     }
   }
 }
@@ -95,6 +98,10 @@ impl DocumentUserService for FakeUser {
 
   fn workspace_id(&self) -> Result<Uuid, FlowyError> {
     Ok(self.workspace_id)
+  }
+
+  fn user_data_dir(&self) -> Result<PathBuf, FlowyError> {
+    Ok(self.user_data_dir.clone())
   }
 
   fn collab_db(&self, _uid: i64) -> Result<std::sync::Weak<CollabKVDB>, FlowyError> {

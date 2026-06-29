@@ -23,6 +23,7 @@ lib-infra = { workspace = true }
 validator = { workspace = true, features = ["derive"] }
 protobuf.workspace = true
 bytes.workspace = true
+chrono.workspace = true
 nanoid = "0.4.0"
 strum_macros = "0.21"
 serde.workspace = true

@@ -7,6 +7,7 @@ use flowy_document_pub::cloud::DocumentCloudService;
 use flowy_error::{FlowyError, FlowyResult};
 use flowy_storage_pub::storage::StorageService;
 use flowy_user::services::authenticate_user::AuthenticateUser;
+use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use uuid::Uuid;
 
@@ -101,6 +102,14 @@ impl DocumentUserService for DocumentUserImpl {
       .upgrade()
       .ok_or(FlowyError::internal().with_context("Unexpected error: UserSession is None"))?
       .workspace_id()
+  }
+
+  fn user_data_dir(&self) -> Result<PathBuf, FlowyError> {
+    self
+      .0
+      .upgrade()
+      .ok_or(FlowyError::internal().with_context("Unexpected error: UserSession is None"))?
+      .get_user_data_dir()
   }
 
   fn collab_db(&self, uid: i64) -> Result<Weak<CollabKVDB>, FlowyError> {

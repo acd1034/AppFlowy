@@ -8,6 +8,7 @@ pub mod parser;
 pub mod protobuf;
 
 pub mod deps;
+mod local_json;
 pub mod notification;
 mod parse;
 pub mod reminder;

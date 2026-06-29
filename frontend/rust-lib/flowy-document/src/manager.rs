@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Weak;
 
@@ -17,6 +18,9 @@ use collab_entity::CollabType;
 use crate::document::{
   subscribe_document_changed, subscribe_document_snapshot_state, subscribe_document_sync_state,
 };
+use crate::local_json::{
+  LOCAL_JSON_EXPORT_DEBOUNCE, export_document_with_user_service, is_local_json_enabled,
+};
 use collab_integrate::collab_builder::{
   AppFlowyCollabBuilder, CollabBuilderConfig, CollabPersistenceImpl,
 };
@@ -27,7 +31,7 @@ use flowy_error::{ErrorCode, FlowyError, FlowyResult, internal_error};
 use flowy_storage_pub::storage::{CreatedUpload, StorageService};
 use lib_infra::util::timestamp;
 use tracing::{event, instrument};
-use tracing::{info, trace};
+use tracing::{info, trace, warn};
 use uuid::Uuid;
 
 use crate::entities::UpdateDocumentAwarenessStatePB;
@@ -40,6 +44,7 @@ pub trait DocumentUserService: Send + Sync {
   fn user_id(&self) -> Result<i64, FlowyError>;
   fn device_id(&self) -> Result<String, FlowyError>;
   fn workspace_id(&self) -> Result<Uuid, FlowyError>;
+  fn user_data_dir(&self) -> Result<PathBuf, FlowyError>;
   fn collab_db(&self, uid: i64) -> Result<Weak<CollabKVDB>, FlowyError>;
 }
 
@@ -56,6 +61,7 @@ pub struct DocumentManager {
   collab_builder: Weak<AppFlowyCollabBuilder>,
   documents: Arc<DashMap<Uuid, Arc<RwLock<Document>>>>,
   removing_documents: Arc<DashMap<Uuid, Arc<RwLock<Document>>>>,
+  local_json_export_tasks: Arc<DashMap<Uuid, tokio::task::JoinHandle<()>>>,
   cloud_service: Arc<dyn DocumentCloudService>,
   storage_service: Weak<dyn StorageService>,
   snapshot_service: Arc<dyn DocumentSnapshotService>,
@@ -63,6 +69,7 @@ pub struct DocumentManager {
 
 impl Drop for DocumentManager {
   fn drop(&mut self) {
+    self.abort_scheduled_local_json_exports();
     trace!("[Drop] drop document manager");
   }
 }
@@ -80,6 +87,7 @@ impl DocumentManager {
       collab_builder,
       documents: Arc::new(Default::default()),
       removing_documents: Arc::new(Default::default()),
+      local_json_export_tasks: Arc::new(Default::default()),
       cloud_service,
       storage_service,
       snapshot_service,
@@ -113,6 +121,7 @@ impl DocumentManager {
 
   pub async fn initialize(&self, _uid: i64) -> FlowyResult<()> {
     trace!("initialize document manager");
+    self.abort_scheduled_local_json_exports();
     self.documents.clear();
     self.removing_documents.clear();
     Ok(())
@@ -172,11 +181,21 @@ impl DocumentManager {
         format!("document {} already exists", doc_id),
       ))
     } else {
-      let encoded_collab = doc_state_from_document_data(doc_id, data).await?;
+      let document_data = data.unwrap_or_else(|| {
+        trace!(
+          "{} document data is None, use default document data",
+          doc_id
+        );
+        default_document_data(&doc_id.to_string())
+      });
+      let encoded_collab = doc_state_from_document_data(doc_id, document_data.clone()).await?;
       self
         .persistence()?
         .save_collab_to_disk(doc_id.to_string().as_str(), encoded_collab.clone())
         .map_err(internal_error)?;
+      self
+        .export_document_to_local_json(doc_id, document_data)
+        .await;
 
       // Send the collab data to server with a background task.
       let cloud_service = self.cloud_service.clone();
@@ -326,15 +345,27 @@ impl DocumentManager {
 
   pub async fn open_document(&self, doc_id: &Uuid) -> FlowyResult<()> {
     if let Some(mutex_document) = self.restore_document_from_removing(doc_id) {
-      let lock = mutex_document.read().await;
-      lock.start_init_sync();
-    }
-
-    if self.documents.contains_key(doc_id) {
+      {
+        let lock = mutex_document.read().await;
+        lock.start_init_sync();
+      }
+      self
+        .export_document_handle_to_local_json(doc_id, &mutex_document)
+        .await;
       return Ok(());
     }
 
-    let _ = self.create_document_instance(doc_id, true).await?;
+    if let Some(document) = self.documents.get(doc_id).map(|item| item.value().clone()) {
+      self
+        .export_document_handle_to_local_json(doc_id, &document)
+        .await;
+      return Ok(());
+    }
+
+    let document = self.create_document_instance(doc_id, true).await?;
+    self
+      .export_document_handle_to_local_json(doc_id, &document)
+      .await;
     Ok(())
   }
 
@@ -372,6 +403,7 @@ impl DocumentManager {
         .await?;
       // When deleting a document, we need to remove it from the cache.
       self.documents.remove(doc_id);
+      self.abort_scheduled_local_json_export(doc_id);
     }
     Ok(())
   }
@@ -499,20 +531,80 @@ impl DocumentManager {
     self.documents.insert(doc_id, doc.clone());
     Some(doc)
   }
+
+  pub(crate) async fn export_document_to_local_json(&self, doc_id: &Uuid, data: DocumentData) {
+    if let Err(err) =
+      export_document_with_user_service(self.user_service.clone(), *doc_id, data).await
+    {
+      warn!(
+        "failed to export document {} to local JSON: {}",
+        doc_id, err
+      );
+    }
+  }
+
+  async fn export_document_handle_to_local_json(
+    &self,
+    doc_id: &Uuid,
+    document: &Arc<RwLock<Document>>,
+  ) {
+    if !is_local_json_enabled() {
+      return;
+    }
+
+    let data = match document.read().await.get_document_data() {
+      Ok(data) => data,
+      Err(err) => {
+        warn!(
+          "failed to read document {} for local JSON export: {}",
+          doc_id, err
+        );
+        return;
+      },
+    };
+    self.export_document_to_local_json(doc_id, data).await;
+  }
+
+  pub(crate) fn schedule_document_local_json_export(&self, doc_id: Uuid, data: DocumentData) {
+    if !is_local_json_enabled() {
+      return;
+    }
+
+    let user_service = self.user_service.clone();
+    let handle = tokio::spawn(async move {
+      tokio::time::sleep(LOCAL_JSON_EXPORT_DEBOUNCE).await;
+      if let Err(err) = export_document_with_user_service(user_service, doc_id, data).await {
+        warn!(
+          "failed to export document {} to local JSON: {}",
+          doc_id, err
+        );
+      }
+    });
+
+    if let Some(previous) = self.local_json_export_tasks.insert(doc_id, handle) {
+      previous.abort();
+    }
+  }
+
+  fn abort_scheduled_local_json_export(&self, doc_id: &Uuid) {
+    if let Some((_, task)) = self.local_json_export_tasks.remove(doc_id) {
+      task.abort();
+    }
+  }
+
+  fn abort_scheduled_local_json_exports(&self) {
+    for task in self.local_json_export_tasks.iter() {
+      task.abort();
+    }
+    self.local_json_export_tasks.clear();
+  }
 }
 
 async fn doc_state_from_document_data(
   doc_id: &Uuid,
-  data: Option<DocumentData>,
+  data: DocumentData,
 ) -> Result<EncodedCollab, FlowyError> {
   let doc_id = doc_id.to_string();
-  let data = data.unwrap_or_else(|| {
-    trace!(
-      "{} document data is None, use default document data",
-      doc_id.to_string()
-    );
-    default_document_data(&doc_id)
-  });
   // spawn_blocking is used to avoid blocking the tokio thread pool if the document is large.
   let encoded_collab = tokio::task::spawn_blocking(move || {
     let collab = Collab::new_with_origin(CollabOrigin::Empty, doc_id, vec![], false);
