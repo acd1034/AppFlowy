@@ -10,6 +10,7 @@ collab = { workspace = true }
 collab-folder = { workspace = true }
 collab-entity = { workspace = true }
 collab-integrate = { workspace = true }
+chrono.workspace = true
 flowy-folder-pub = { workspace = true }
 flowy-search-pub = { workspace = true }
 flowy-user-pub = { workspace = true }

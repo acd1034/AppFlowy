@@ -12,6 +12,7 @@ pub mod view_operation;
 mod manager_init;
 mod manager_observer;
 
+mod local_json;
 pub mod publish_util;
 pub mod share;
 mod util;

@@ -2,6 +2,7 @@ use crate::entities::{
   ChildViewUpdatePB, FolderSyncStatePB, RepeatedTrashPB, RepeatedViewPB, SectionViewsPB, ViewPB,
   ViewSectionPB, view_pb_with_child_views, view_pb_without_child_views,
 };
+use crate::local_json::export_folder_manifest_snapshot;
 use crate::manager::{FolderUser, get_workspace_private_view_pbs, get_workspace_public_view_pbs};
 use crate::notification::{FolderNotification, folder_notification_builder};
 use collab::core::collab_state::SyncState;
@@ -77,6 +78,9 @@ pub(crate) fn subscribe_folder_view_changed(
             }
           },
         };
+
+        let folder = lock.read().await;
+        export_folder_manifest_snapshot(user.clone(), workspace_id, &folder);
       }
     }
   });
@@ -153,6 +157,9 @@ pub(crate) fn subscribe_folder_trash_changed(
             notify_parent_view_did_change(workspace_id, &folder, parent_view_ids);
           },
         }
+
+        let folder = lock.read().await;
+        export_folder_manifest_snapshot(user.clone(), workspace_id, &folder);
       }
     }
   });

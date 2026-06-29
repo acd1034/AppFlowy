@@ -7,6 +7,7 @@ use crate::entities::{
   WorkspacePB, view_pb_with_all_child_views, view_pb_with_child_views, view_pb_without_child_views,
   view_pb_without_child_views_from_arc,
 };
+use crate::local_json::{export_folder_manifest_snapshot, is_local_json_enabled};
 use crate::manager_observer::{
   ChildViewChangeReason, notify_child_views_changed, notify_did_update_workspace,
   notify_parent_view_did_change,
@@ -56,6 +57,7 @@ use flowy_user_pub::entities::{Role, UserWorkspace};
 use futures::future;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
 use tokio::sync::RwLockWriteGuard;
@@ -65,6 +67,7 @@ use uuid::Uuid;
 pub trait FolderUser: Send + Sync {
   fn user_id(&self) -> Result<i64, FlowyError>;
   fn workspace_id(&self) -> Result<Uuid, FlowyError>;
+  fn user_data_dir(&self) -> Result<PathBuf, FlowyError>;
   fn collab_db(&self, uid: i64) -> Result<Weak<CollabKVDB>, FlowyError>;
   fn sqlite_connection(&self, uid: i64) -> Result<DBConnection, FlowyError>;
   fn is_folder_exist_on_disk(&self, uid: i64, workspace_id: &Uuid) -> FlowyResult<bool>;
@@ -117,6 +120,29 @@ impl FolderManager {
       .cloud_service
       .upgrade()
       .ok_or_else(FlowyError::ref_drop)
+  }
+
+  pub(crate) async fn export_local_json_manifest(&self) {
+    if !is_local_json_enabled() {
+      return;
+    }
+
+    let workspace_id = match self.user.workspace_id() {
+      Ok(workspace_id) => workspace_id,
+      Err(err) => {
+        tracing::warn!(
+          "failed to read workspace id for local JSON manifest export: {}",
+          err
+        );
+        return;
+      },
+    };
+
+    let Some(lock) = self.mutex_folder.load_full() else {
+      return;
+    };
+    let folder = lock.read().await;
+    export_folder_manifest_snapshot(Arc::downgrade(&self.user), workspace_id, &folder);
   }
 
   pub fn register_operation_handler(
@@ -612,6 +638,7 @@ impl FolderManager {
       }
     }
 
+    self.export_local_json_manifest().await;
     Ok((view, encoded_collab))
   }
 
@@ -641,6 +668,7 @@ impl FolderManager {
       let mut folder = lock.write().await;
       folder.insert_view(view.clone(), None);
     }
+    self.export_local_json_manifest().await;
     Ok(view)
   }
 
@@ -856,6 +884,7 @@ impl FolderManager {
       }
     }
 
+    self.export_local_json_manifest().await;
     Ok(())
   }
 
@@ -932,6 +961,7 @@ impl FolderManager {
       }
       notify_parent_view_did_change(workspace_id, &folder, vec![new_parent_id, old_parent_id]);
     }
+    self.export_local_json_manifest().await;
     Ok(())
   }
 
@@ -987,6 +1017,7 @@ impl FolderManager {
         }
       }
     }
+    self.export_local_json_manifest().await;
     Ok(())
   }
 
@@ -1991,6 +2022,7 @@ impl FolderManager {
         .payload(RepeatedTrashPB { items: vec![] })
         .send();
     }
+    self.export_local_json_manifest().await;
   }
 
   #[tracing::instrument(level = "trace", skip(self))]
@@ -1999,6 +2031,7 @@ impl FolderManager {
       let mut folder = lock.write().await;
       folder.delete_trash_view_ids(vec![trash_id.to_string()]);
     }
+    self.export_local_json_manifest().await;
   }
 
   /// Delete all the trash permanently.
@@ -2017,6 +2050,7 @@ impl FolderManager {
         .payload(RepeatedTrashPB { items: vec![] })
         .send();
     }
+    self.export_local_json_manifest().await;
   }
 
   /// Delete the trash permanently.
@@ -2040,6 +2074,7 @@ impl FolderManager {
         }
       }
     }
+    self.export_local_json_manifest().await;
     Ok(())
   }
 
@@ -2188,6 +2223,7 @@ impl FolderManager {
       }
     }
 
+    self.export_local_json_manifest().await;
     Ok(())
   }
 

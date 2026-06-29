@@ -135,10 +135,35 @@ fn export_document_to_local_json(
 
   let mut manifest = existing_manifest;
   manifest.exported_at = timestamp.clone();
-  upsert_manifest_document(
-    &mut manifest.documents,
-    manifest_document_from_view(view_id, title, "document", None, None, Some(timestamp)),
+  let existing_manifest_document = manifest
+    .documents
+    .iter()
+    .find(|document| document.view_id == view_id)
+    .cloned();
+  let mut manifest_document = manifest_document_from_view(
+    view_id,
+    title,
+    "document",
+    existing_manifest_document
+      .as_ref()
+      .and_then(|document| document.parent_view_id.clone()),
+    existing_manifest_document
+      .as_ref()
+      .and_then(|document| document.sort_index),
+    Some(timestamp),
   );
+  if let Some(existing_manifest_document) = existing_manifest_document {
+    manifest_document.external_updated_at = existing_manifest_document.external_updated_at;
+    manifest_document.last_appflowy_export_mtime_ms =
+      existing_manifest_document.last_appflowy_export_mtime_ms;
+    manifest_document.last_imported_json_mtime_ms =
+      existing_manifest_document.last_imported_json_mtime_ms;
+    manifest_document.last_appflowy_content_hash =
+      existing_manifest_document.last_appflowy_content_hash;
+    manifest_document.last_json_content_hash = existing_manifest_document.last_json_content_hash;
+    manifest_document.extra = existing_manifest_document.extra;
+  }
+  upsert_manifest_document(&mut manifest.documents, manifest_document);
   store.write_manifest(&manifest).map_err(local_json_error)?;
 
   Ok(())

@@ -27,6 +27,7 @@ use crate::deps_resolve::folder_deps::folder_deps_doc_impl::DocumentFolderOperat
 use collab_plugins::local_storage::kv::KVTransactionDB;
 use flowy_folder_pub::query::{FolderQueryService, FolderService, FolderViewEdit, QueryCollab};
 use lib_infra::async_trait::async_trait;
+use std::path::PathBuf;
 use tracing::trace;
 use uuid::Uuid;
 
@@ -93,6 +94,10 @@ impl FolderUser for FolderUserImpl {
 
   fn workspace_id(&self) -> Result<Uuid, FlowyError> {
     self.upgrade_user()?.workspace_id()
+  }
+
+  fn user_data_dir(&self) -> Result<PathBuf, FlowyError> {
+    self.upgrade_user()?.get_user_data_dir()
   }
 
   fn collab_db(&self, uid: i64) -> Result<Weak<CollabKVDB>, FlowyError> {

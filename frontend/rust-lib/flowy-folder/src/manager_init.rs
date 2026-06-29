@@ -132,6 +132,8 @@ impl FolderManager {
       Arc::downgrade(&self.user),
     );
 
+    self.export_local_json_manifest().await;
+
     Ok(())
   }
 

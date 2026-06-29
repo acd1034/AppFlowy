@@ -2,6 +2,9 @@ use std::fmt::{Display, Formatter};
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::process;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -9,6 +12,8 @@ use serde::de::DeserializeOwned;
 use super::schema::{LocalJsonDocument, LocalJsonManifest};
 
 pub type LocalJsonResult<T> = Result<T, LocalJsonError>;
+
+static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JsonConflictPolicy {
@@ -452,7 +457,17 @@ fn tmp_path_for(path: &Path) -> LocalJsonResult<PathBuf> {
     .ok_or_else(|| LocalJsonError::MissingFileName {
       path: path.to_path_buf(),
     })?;
-  Ok(path.with_file_name(format!("{file_name}.tmp")))
+  let timestamp_nanos = SystemTime::now()
+    .duration_since(UNIX_EPOCH)
+    .map(|duration| duration.as_nanos())
+    .unwrap_or_default();
+  let counter = TEMP_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+  Ok(path.with_file_name(format!(
+    "{file_name}.{}.{}.{}.tmp",
+    process::id(),
+    timestamp_nanos,
+    counter
+  )))
 }
 
 fn create_dir_all(path: impl AsRef<Path>) -> LocalJsonResult<()> {

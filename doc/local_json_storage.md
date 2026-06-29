@@ -101,6 +101,24 @@ persistence remains the fallback source of truth.
 Document page ids, titles, layouts, and paths can be found without reading
 AppFlowy's internal databases.
 
+The manifest is regenerated from the current Folder/View tree when the workspace
+is initialized and after Document view create, rename, move, trash, restore, or
+permanent delete operations. Trash entries are excluded from discovery; restored
+Document views are exported again.
+
+Each Document entry includes:
+
+- `view_id`
+- `title`
+- `layout`
+- `parent_view_id`
+- `sort_index`
+- `path`
+
+When a document JSON file already exists, AppFlowy title changes are mirrored to
+that file's top-level `title` field. The folder tree remains the title source of
+truth.
+
 Full title import from `manifest.json` or document JSON is a follow-up feature.
 Folder/View metadata remains the title source of truth.
 

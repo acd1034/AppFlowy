@@ -2537,6 +2537,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "bytes",
+ "chrono",
  "client-api",
  "collab",
  "collab-entity",
