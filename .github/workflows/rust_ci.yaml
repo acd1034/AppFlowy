@@ -19,6 +19,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   CLOUD_VERSION: 0.9.49-amd64
+  CLOUD_REF: 0.9.49
   RUST_TOOLCHAIN: "1.85.0"
 
 jobs:
@@ -60,6 +61,7 @@ jobs:
         with:
           repository: AppFlowy-IO/AppFlowy-Cloud
           path: AppFlowy-Cloud
+          ref: ${{ env.CLOUD_REF }}
 
       - name: Prepare appflowy cloud env
         working-directory: AppFlowy-Cloud
@@ -106,7 +108,7 @@ jobs:
           af_cloud_test_ws_url: ws://localhost/ws/v1
           af_cloud_test_gotrue_url: http://localhost/gotrue
         run: |
-          DISABLE_CI_TEST_LOG="true" cargo test --no-default-features --features="dart" -- --skip local_ollama_test
+          DISABLE_CI_TEST_LOG="true" APPFLOWY_LOCAL_JSON=1 cargo test --no-default-features --features="dart" -- --skip local_ollama_test
 
       - name: rustfmt rust-lib
         run: cargo fmt --all -- --check
