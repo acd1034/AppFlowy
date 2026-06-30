@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use super::store::{LocalJsonError, LocalJsonResult};
 
-pub const MANIFEST_SCHEMA: &str = "appflowy.codex_json.manifest";
-pub const DOCUMENT_SCHEMA: &str = "appflowy.codex_json.document";
+pub const MANIFEST_SCHEMA: &str = "appflowy.local_json.manifest";
+pub const DOCUMENT_SCHEMA: &str = "appflowy.local_json.document";
 pub const SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -24,7 +24,7 @@ async fn local_json_imports_document_before_open() {
   ));
   let mut document =
     LocalJsonDocument::new(doc_id.to_string(), workspace_id, "Imported title", None);
-  document.last_writer = "codex".to_string();
+  document.last_writer = "llm".to_string();
   document.blocks = vec![LocalJsonBlock::paragraph("hello from local json")];
   store.write_document(&document).unwrap();
 

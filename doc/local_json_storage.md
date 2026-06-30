@@ -1,7 +1,7 @@
 # Local JSON Document Storage
 
 This document describes the MVP local JSON interface for AppFlowy Document
-pages. The feature is meant for local-only editing by tools such as Codex while
+pages. The feature is meant for local-only editing by tools such as LLM while
 keeping AppFlowy's runtime Collab/CRDT document model intact.
 
 ## Enable
@@ -37,7 +37,7 @@ JSON files live next to the existing user data area, not inside the RocksDB
 `collab_db` directory:
 
 ```text
-{user_data_dir}/codex_json/
+{user_data_dir}/local_json/
   workspaces/
     {workspace_id}/
       manifest.json
@@ -71,7 +71,7 @@ The MVP detects external edits only at document startup boundaries:
 - AppFlowy opens or reopens a Document page, then imports a valid existing JSON
   file before loading the runtime document.
 - If no JSON file exists on open, AppFlowy opens the existing internal document
-  and exports JSON for Codex to edit later.
+  and exports JSON for LLM to edit later.
 - If JSON is malformed, AppFlowy moves a recovery copy to the backup path,
   keeps the existing internal document, and logs a warning.
 
@@ -105,7 +105,7 @@ Document files use this schema:
 
 ```json
 {
-  "schema": "appflowy.codex_json.document",
+  "schema": "appflowy.local_json.document",
   "schema_version": 1,
   "view_id": "document-view-id",
   "workspace_id": "workspace-id",
@@ -122,7 +122,7 @@ Document files use this schema:
 ```
 
 The primary representation is semantic JSON, not an opaque base64 CRDT blob.
-Codex may edit `blocks[*].text`, block order, and simple block types. Existing
+LLM may edit `blocks[*].text`, block order, and simple block types. Existing
 AppFlowy block ids and metadata are preserved when present.
 
 ## Supported Blocks
@@ -146,7 +146,7 @@ persistence remains the fallback source of truth.
 
 ## Manifest
 
-`manifest.json` is the discovery index for Codex. In the MVP it is exported so
+`manifest.json` is the discovery index for LLM. In the MVP it is exported so
 Document page ids, titles, layouts, and paths can be found without reading
 AppFlowy's internal databases.
 
@@ -178,7 +178,7 @@ last valid internal document. The bad file is copied to the workspace backup
 directory using a timestamped name:
 
 ```text
-{user_data_dir}/codex_json/workspaces/{workspace_id}/backups/
+{user_data_dir}/local_json/workspaces/{workspace_id}/backups/
 ```
 
 Inspect the backup to recover manual edits, fix the active JSON file, and reopen
@@ -192,7 +192,7 @@ interface is a persistence boundary for external tools, not a replacement for
 the in-memory editor model. Import converts JSON into `DocumentData`, then the
 normal local persistence path stores the resulting Collab document.
 
-## Codex Editing Example
+## LLM Editing Example
 
 1. Start AppFlowy with `APPFLOWY_LOCAL_JSON=1`.
 2. Create or open a Document page once so AppFlowy exports
@@ -213,7 +213,7 @@ normal local persistence path stores the resulting Collab document.
 
 ```json
 {
-  "schema": "appflowy.codex_json.document",
+  "schema": "appflowy.local_json.document",
   "schema_version": 1,
   "view_id": "9f9fb1c4-43b4-4b00-8384-9d1e78de172a",
   "workspace_id": "workspace-id",
@@ -222,7 +222,7 @@ normal local persistence path stores the resulting Collab document.
   "blocks": [
     {
       "type": "paragraph",
-      "text": "hello from codex"
+      "text": "hello from llm"
     }
   ],
   "unsupported_blocks": []

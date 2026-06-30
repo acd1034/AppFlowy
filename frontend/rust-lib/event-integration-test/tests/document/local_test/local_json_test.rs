@@ -93,7 +93,7 @@ async fn local_json_exports_document_text_after_appflowy_edit() {
   let document = wait_for_document_block_text(&document_path, "hello from appflowy").await;
   assert_eq!(
     document["schema"].as_str(),
-    Some("appflowy.codex_json.document")
+    Some("appflowy.local_json.document")
   );
   assert_eq!(document["view_id"].as_str(), Some(view.id.as_str()));
   assert!(document_blocks_contain_text(
@@ -112,13 +112,13 @@ async fn local_json_imports_external_text_before_first_open() {
   let store = local_json_store(&test, uid, &workspace_id);
   let mut document =
     LocalJsonDocument::new(view.id.clone(), workspace_id.clone(), "Import body", None);
-  document.last_writer = "codex".to_string();
-  document.blocks = vec![LocalJsonBlock::paragraph("hello from codex")];
+  document.last_writer = "llm".to_string();
+  document.blocks = vec![LocalJsonBlock::paragraph("hello from llm")];
   store.write_document(&document).unwrap();
 
   test.open_document(view.id.clone()).await;
   let data = test.get_document_data(&view.id).await;
-  assert_eq!(document_plain_text(&data), "hello from codex");
+  assert_eq!(document_plain_text(&data), "hello from llm");
 }
 
 #[tokio::test]
@@ -145,7 +145,7 @@ async fn setup_local_json_test() -> (EventIntegrationTest, i64, String, PathBuf)
   let workspace_id = test.get_workspace_id().await.to_string();
   let workspace_root = PathBuf::from(test.user_data_path())
     .join(uid.to_string())
-    .join("codex_json")
+    .join("local_json")
     .join("workspaces")
     .join(&workspace_id);
 

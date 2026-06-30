@@ -58,7 +58,7 @@ impl JsonStorageConfig {
     let workspace_id = workspace_id.into();
     let workspace_root = user_data_dir
       .as_ref()
-      .join("codex_json")
+      .join("local_json")
       .join("workspaces")
       .join(&workspace_id);
     Self::new(workspace_root, appflowy_profile_uid, workspace_id)
@@ -535,7 +535,7 @@ mod tests {
     assert_eq!(
       store.workspace_root(),
       root
-        .join("codex_json")
+        .join("local_json")
         .join("workspaces")
         .join("workspace-1")
     );
@@ -572,7 +572,7 @@ mod tests {
     store.write_manifest(&manifest).unwrap();
     let raw = fs::read_to_string(store.manifest_path()).unwrap();
     assert!(raw.contains('\n'));
-    assert!(raw.contains("\"schema\": \"appflowy.codex_json.manifest\""));
+    assert!(raw.contains("\"schema\": \"appflowy.local_json.manifest\""));
     assert!(
       !store
         .manifest_path()
@@ -613,8 +613,8 @@ mod tests {
       id: Some("block-1".to_string()),
       ty: "paragraph".to_string(),
       raw_type: None,
-      text: Some("hello from codex".to_string()),
-      delta: Some(json!([{ "insert": "hello from codex" }])),
+      text: Some("hello from llm".to_string()),
+      delta: Some(json!([{ "insert": "hello from llm" }])),
       children: Vec::new(),
       appflowy: None,
       raw: None,

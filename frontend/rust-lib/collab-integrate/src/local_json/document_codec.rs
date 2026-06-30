@@ -442,20 +442,20 @@ mod tests {
 
   #[test]
   fn round_trips_paragraph_text() {
-    let document = document_with_blocks(vec![LocalJsonBlock::paragraph("hello from codex")]);
+    let document = document_with_blocks(vec![LocalJsonBlock::paragraph("hello from llm")]);
 
     let data = import_json_to_document_data(&document).unwrap();
     let children = root_children(&data);
     assert_eq!(children.len(), 1);
     assert_eq!(children[0].ty, INTERNAL_PARAGRAPH);
-    assert_eq!(text_for_block(&data, children[0]), "hello from codex");
+    assert_eq!(text_for_block(&data, children[0]), "hello from llm");
 
     let exported = export_document_data_to_json("view-1", "workspace-1", "Title", &data).unwrap();
     assert_eq!(exported.blocks[0].ty, INTERNAL_PARAGRAPH);
-    assert_eq!(exported.blocks[0].text.as_deref(), Some("hello from codex"));
+    assert_eq!(exported.blocks[0].text.as_deref(), Some("hello from llm"));
     assert_eq!(
       exported.blocks[0].delta,
-      Some(json!([{ "insert": "hello from codex" }]))
+      Some(json!([{ "insert": "hello from llm" }]))
     );
   }
 
