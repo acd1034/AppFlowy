@@ -3,7 +3,7 @@ name: Rust-CI
 on:
   push:
     branches:
-      - "main"
+      - "dev"
       - "develop"
       - "release/*"
     paths:
@@ -12,7 +12,7 @@ on:
 
   pull_request:
     branches:
-      - "main"
+      - "dev"
       - "develop"
       - "release/*"
 
